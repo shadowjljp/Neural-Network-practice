@@ -19,6 +19,7 @@
 #   You are free to modify this code in any way you want, but need to mention it in the README file.
 #
 #####################################################################################################################
+from copy import deepcopy
 
 from sklearn import preprocessing
 import numpy as np
@@ -35,12 +36,12 @@ class NeuralNet:
 
         raw_input = pd.read_csv(train)
         # TODO: Remember to implement the preprocess method
-        train_dataset = self.preprocess(raw_input)
-        #ncols = len(train_dataset.columns)
-        #nrows = len(train_dataset.index)
-        ncols=np.size(train_dataset,1)
-        nrows=np.size(train_dataset,0)
-        print(ncols)
+        whole_dataset = self.preprocess(raw_input)
+        samples = len(whole_dataset.index)
+        train_dataset = whole_dataset[:int(samples*0.75)]
+        self.test_dataset = whole_dataset[int(samples*0.75):-1]
+        ncols = len(train_dataset.columns)
+        nrows = len(train_dataset.index)
         self.X = train_dataset.iloc[:, 0:(ncols -1)].values.reshape(nrows, ncols-1)
         self.y = train_dataset.iloc[:, (ncols-1)].values.reshape(nrows, 1)
         #
@@ -52,6 +53,7 @@ class NeuralNet:
         else:
             output_layer_size = len(self.y[0])
 
+        #self.activation = 'sigmoid'
         # assign random weights to matrices in network
         # number of weights connecting layers = (no. of nodes in previous layer) x (no. of nodes in following layer)
         self.w01 = 2 * np.random.random((input_layer_size, h1)) - 1
@@ -70,7 +72,11 @@ class NeuralNet:
 
     def __activation(self, x, activation="sigmoid"):
         if activation == "sigmoid":
-            self.__sigmoid(self, x)
+            return self.__sigmoid(x)
+        if activation == "tanh":
+            return self.__tanh(x)
+        else:
+            return self.__relu(x)
 
     #
     # TODO: Define the function for tanh, ReLu and their derivatives
@@ -78,7 +84,11 @@ class NeuralNet:
 
     def __activation_derivative(self, x, activation="sigmoid"):
         if activation == "sigmoid":
-            self.__sigmoid_derivative(self, x)
+            return self.__sigmoid_derivative(x)
+        if activation == "tanh":
+            return self.__tanh_derivative(x)
+        else:
+            return self.__Relu_derivative(x)
 
     def __sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -89,7 +99,9 @@ class NeuralNet:
         return result
 
     def __relu(self, x):
-        return np.maximum(x, 0)
+        relu = deepcopy(x)
+        relu[relu <= 0] = 0
+        return relu
     # derivative of sigmoid function, indicates confidence about existing weight
 
     def __sigmoid_derivative(self, x):
@@ -100,7 +112,10 @@ class NeuralNet:
         return 1-(x ** 2)
 
     def __Relu_derivative(self, x):
-        return np.maximum(1, 0)
+        relu = deepcopy(x)
+        relu[relu<=0] = 0
+        relu[relu>0] = 1
+        return relu
     #
     # TODO: Write code for pre-processing the dataset, which would include standardization, normalization,
     #   categorical to numerical, etc
@@ -108,31 +123,40 @@ class NeuralNet:
 
     def preprocess(self, X):
         # categorical attributes to numerical values first
-        encode = preprocessing.OrdinalEncoder()
-        encode.fit(X)
-        X = encode.transform(X)
+        #encode = preprocessing.OrdinalEncoder()
+        #encode.fit(X)
+       # X = encode.transform(X)
 
         #Normalization
 
-        X=preprocessing.normalize(X)
+       # X=preprocessing.normalize(X)
 
         # standardization
-        X=preprocessing.scale(X)
+       # X=preprocessing.scale(X)
         #transform from numpy.ndarray to pandas DataFrame
         #Y=pd.DataFrame({"Sample code number": X[:, 0], "Clump Thickness": X[:, 1],"Uniformity of Cell Size": X[:, 2],"Uniformity of Cell Shape": X[:, 3],"Marginal Adhesion": X[:, 4],"Single Epithelial Cell Size": X[:, 5],"Bare Nuclei": X[:, 6],"Bland Chromatin": X[:, 7],"Normal Nucleoli": X[:, 8],"Mitoses": X[:, 9],"Class": X[:, 10]})
         #Y=pd.DataFrame({"X1": X[:, 0],"X2": X[:, 1],"X3": X[:, 2],"y": X[:, 3]})
         #return Y
         #X=pd.DataFrame(X,index=X[:,0])
         #print("X= ",X)
-        return X
+        # standardizing and scaling X
+            numeric_cols = X.columns[X.dtypes != 'object']
+            numeric_col_means = X.loc[:, numeric_cols].mean()
+            numeric_col_std = X.loc[:, numeric_cols].std()
+            X.loc[:, numeric_cols] = (X.loc[:, numeric_cols] - numeric_col_means) / numeric_col_std
+        # replace nan with 0
+            X = X.fillna(0)
+        # one hot
+            X = pd.get_dummies(X)
+            return X
 
     # Below is the training function
 
-    def train(self, max_iterations=20000, learning_rate = 0.05):
+    def train(self, max_iterations=1000, learning_rate = 0.05,activation="sigmoid"):
         for iteration in range(max_iterations):
-            out = self.forward_pass(activation="ReLu")
+            out = self.forward_pass(activation)
             error = 0.5 * np.power((out - self.y), 2)
-            self.backward_pass(out, activation="ReLu")
+            self.backward_pass(out, activation)
             update_layer2 = learning_rate * self.X23.T.dot(self.deltaOut)
             update_layer1 = learning_rate * self.X12.T.dot(self.delta23)
             update_input = learning_rate * self.X01.T.dot(self.delta12)
@@ -147,7 +171,7 @@ class NeuralNet:
         print(self.w12)
         print(self.w23)
 
-    def forward_pass(self,activation):
+    def forward_pass(self,activation="sigmoid"):
         if activation == "sigmoid":
         # pass our inputs through our neural network
             in1 = np.dot(self.X, self.w01 )
@@ -174,7 +198,7 @@ class NeuralNet:
             out = self.__relu(in3)
             return out
 
-    def backward_pass(self, out, activation):
+    def backward_pass(self, out, activation="sigmoid"):
         # pass our inputs through our neural network
         self.compute_output_delta(out, activation)
         self.compute_hidden_layer2_delta(activation)
@@ -204,7 +228,7 @@ class NeuralNet:
 
     # TODO: Implement other activation functions
 
-    def compute_hidden_layer1_delta(self, activation="sigmoid"):
+    def compute_hidden_layer1_delta(self, activation):
         if activation == "sigmoid":
             delta_hidden_layer1 = (self.delta23.dot(self.w12.T)) * (self.__sigmoid_derivative(self.X12))
         if activation == "tanh":
@@ -213,23 +237,34 @@ class NeuralNet:
             delta_hidden_layer1 = (self.delta23.dot(self.w12.T)) * (self.__Relu_derivative(self.X12))
         self.delta12 = delta_hidden_layer1
 
+    def forward_pass_predict_error(self, X_test,activation):
+        in1 = np.dot(X_test, self.w01)
+        X12 = self.__activation(in1, activation)
+        in2 = np.dot(X12, self.w12)
+        X23 = self.__activation(in2, activation)
+        in3 = np.dot(X23, self.w23)
+        out = self.__activation(in3, activation)
+        return out
 
     # TODO: Implement the predict function for applying the trained model on the  test dataset.
     # You can assume that the test dataset has the same format as the training dataset
     # You have to output the test error from this function
 
-    def predict(self, test, header = True):
-        for iteration in range(20000):
-            out = self.forward_pass(activation="ReLu")
-            error = 0.5 * np.power((out - self.y), 2)
-
-        return error
+    def predict(self, test, header = True, activation="sigmoid"):
+        ncols = len(self.test_dataset.columns)
+        nrows = len(self.test_dataset.index)
+        X_test = self.test_dataset.iloc[:, 0:(ncols - 1)].values.reshape(nrows, ncols - 1)
+        y_test = self.test_dataset.iloc[:, (ncols - 1)].values.reshape(nrows, 1)
+        y_prediction = self.forward_pass_predict_error(X_test, activation)
+        error = 0.5 * np.power((y_prediction - y_test), 2)
+        return np.sum(error)
 
 
 if __name__ == "__main__":
-   # neural_network = NeuralNet("train.csv")
+    #neural_network = NeuralNet("train.csv")
     #neural_network = NeuralNet("breast-cancer-wisconsin.data")
-    neural_network = NeuralNet("abalone.data")
+    neural_network = NeuralNet("wdbc.data")
     neural_network.train()
-   # testError = neural_network.predict("test.csv")
-   # print("prediction error is ", testError)
+    #testError = neural_network.predict("wdbc_test.data")
+    testError = neural_network.predict("test.csv")
+    print("prediction error is ", testError)
